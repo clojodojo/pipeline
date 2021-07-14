@@ -1,5 +1,6 @@
 {:source-paths ["src"]
- :dependencies [[reagent "1.0.0"]]
+ :dependencies [[reagent "1.0.0"]
+                [borkdude/sci "0.2.6"]]
  :dev-http {8080 ["public/"
                   "target/public/"]}
  :builds {:dev {:target :browser
