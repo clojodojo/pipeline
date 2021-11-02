@@ -9,11 +9,11 @@
      :steps [{:code "(fn [i] (+ (:x i) (:y i)))"}]}))
 
 (defn change-initial-input! [e]
-  (swap! state assoc ,,, :initial-input
+  (swap! state assoc :initial-input
     (.. e -target -value)))
 
 (defn add-new-step! []
-  (swap! state update ,,, :steps conj ,,, {:code "(fn [i] i)"}))
+  (swap! state update :steps conj {:code "(fn [i] i)"}))
 
 (defn calculate-results! []
    (try
@@ -37,7 +37,7 @@
       [:div
        [:textarea {:value (:code step)
                    :on-change (fn [e]
-                               (swap! state assoc-in ,,, [:steps index :code] (.. e -target -value)))}]
+                               (swap! state assoc-in [:steps index :code] (.. e -target -value)))}]
 
        [:span {} (pr-str (get results (inc index)))]])
     [:button {:on-click add-new-step!} "+"]]))
