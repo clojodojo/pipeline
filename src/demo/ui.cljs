@@ -3,6 +3,12 @@
     [reagent.core :as r]
     [sci.core :as sci]))
 
+(defn remove-from-vector [vector i]
+  (vec (concat (subvec vector 0 i)
+               (subvec vector (inc i)))))
+
+#_(remove-from-vector [:a :b :c :d] 2)
+
 (defonce state
   (r/atom
     {:initial-input "{:x 1\n:y 2}"
@@ -14,6 +20,9 @@
 
 (defn add-new-step! []
   (swap! state update :steps conj {:code "(fn [i] i)"}))
+
+(defn remove-step! [i]
+  (swap! state update :steps remove-from-vector i))
 
 (defn calculate-results! []
    (try
@@ -35,6 +44,7 @@
                 :on-change change-initial-input!}]
     (for [[index step] (map-indexed vector (:steps @state))]
       [:div
+       [:button {:on-click (fn [_] (remove-step! index))} "x"]
        [:textarea {:value (:code step)
                    :on-change (fn [e]
                                (swap! state assoc-in [:steps index :code] (.. e -target -value)))}]
