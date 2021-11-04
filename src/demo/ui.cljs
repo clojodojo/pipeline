@@ -1,7 +1,8 @@
 (ns demo.ui
  (:require
     [reagent.core :as r]
-    [sci.core :as sci]))
+    [sci.core :as sci]
+    [demo.toposort :as toposort]))
 
 (defn remove-from-vector [vector i]
   (vec (concat (subvec vector 0 i)
@@ -14,21 +15,20 @@
                [value]
                (subvec vector i))))
 
-
 #_(insert-in-vector [:a :b :c] 0 :new)
 
 (defonce state
   (r/atom
-    {:steps [{:label "A"
+    {:steps [{:label "$A"
               :code "[10 15 26]"}
-             {:label "B"
-              :code "(map inc A)"}
-             {:label "C"
-              :code "(reduce + B)"}
-             {:label "D"
-              :code "(count A)"}
-             {:label "E"
-              :code "(/ C D)"}]}))
+             {:label "$B"
+              :code "(map inc $A)"}
+             {:label "$C"
+              :code "(reduce + $B)"}
+             {:label "$D"
+              :code "(count $A)"}
+             {:label "$E"
+              :code "(/ $C $D)"}]}))
 
 (defn insert-step-before! [i]
   (swap! state update :steps insert-in-vector i {:code "(fn [i] i)"}))
@@ -45,36 +45,69 @@
                                       step))
                                     steps))))
 
-#_(defn calculate-results! []
-     (try
-       (vec (reductions (fn [memo f]
-                         (f memo))
-                (sci/eval-string (:initial-input @state))
-                (map (fn [step]
-                       (sci/eval-string (:code step)))
-                     (:steps @state))))
-       (catch js/Error e
-         [])))
 
+(defn analyze [steps]
+  (->> steps
+       (map (fn [step]
+              [(:label step) (set (re-seq #"\$[A-Z]+" (:code step)))]))
+       (into {})))
+
+#_(toposort/toposort (analyze [{:label "$A"
+                                :code "[10 15 26]"}
+                               {:label "$B"
+                                :code "(map inc $A)"}
+                               {:label "$C"
+                                :code "(reduce + $B)"}
+                               {:label "$E"
+                                :code "(/ $C $D)"}
+                               {:label "$D"
+                                :code "(count $A)"}]))
+
+#_{"$A" #{}
+   "$B" #{"$A"}
+   "$C" #{"$B"}
+   "$D" #{"$A"}
+   "$E" #{"$C" "$D"}}
+
+
+(defn analyze-and-reorder [steps]
+  (let [labels-in-order (toposort/toposort (analyze steps))
+        label->step (zipmap (map :label steps)
+                            steps)]
+    (map (fn [l] (label->step l)) labels-in-order)))
+
+#_(analyze-and-reorder [{:label "$A"
+                         :code "[10 15 26]"}
+                        {:label "$B"
+                         :code "(map inc $A)"}
+                        {:label "$C"
+                         :code "(reduce + $B)"}
+                        {:label "$E"
+                         :code "(/ $C $D)"}
+                        {:label "$D"
+                         :code "(count $A)"}])
 
 (defn calculate-results! [steps]
-  (loop [context {}
-         remaining-steps steps]
-   (let [{:keys [label code]} (first remaining-steps)
-         result (try
-                  (sci/eval-string code {:namespaces {'user context}})
-                  (catch js/Error e
-                    e))]
-    (println (type result))
-    (cond
-      (= (type result) ExceptionInfo)
-      (assoc context (symbol label) result)
-      (seq remaining-steps)
-      (recur (assoc context (symbol label) result)
-             (rest remaining-steps))
-      :done
-      context))))
+  (try
+   (loop [context {}
+          remaining-steps (analyze-and-reorder steps)]
+    (let [{:keys [label code]} (first remaining-steps)
+          result (try
+                   (sci/eval-string code {:namespaces {'user context}})
+                   (catch js/Error e
+                     e))]
+     (cond
+       (= (type result) ExceptionInfo)
+       (assoc context (symbol label) result)
 
+       (seq remaining-steps)
+       (recur (assoc context (symbol label) result)
+              (rest remaining-steps))
+
+       :done
+       context)))
+   (catch js/Error e
+     {})))
 
 #_(let [steps [{:label "A"
                 :code "[10 15 26]"}
@@ -87,7 +120,6 @@
                {:label "E"
                 :code "(/ C D)"}]]
     (calculate-results! steps))
-
 
 
 #_(sci/eval-string "(+ A 3)" {:namespaces {'user {'A 7}}})
