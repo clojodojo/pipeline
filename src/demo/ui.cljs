@@ -127,29 +127,37 @@
 
 (defn app-view []
   (let [results (calculate-results! (@state :steps))]
-   [:div
-    [:div
-     [:button {:on-click (fn [_] (insert-step-before! 0))} "+"]]
-    (for [{:keys [label code]} (:steps @state)
-          :let [result (get results (symbol label) ::NO-RESULT)]]
-      ^{:key label}
-      [:<>
-       [:div.step
-        [:textarea {:value code
-                    :on-change (fn [e]
-                                 (edit-step-code! label (.. e -target -value)))}]
-        [:span label "=>"]
-        [:span {}
-          (cond
-           (= (type result) ExceptionInfo)
-           (.-message result)
-           (= result ::NO-RESULT)
-           ""
-           :else
-           (pr-str result))]
-        [:button {:on-click (fn [_] #_(remove-step! index))} "x"]]
-       [:div
-        [:button {:on-click (fn [_] #_(insert-step-before! (inc index)))} "+"]]])]))
+   [:table
+    [:tbody
+     [:tr
+      [:td
+       [:button {:on-click (fn [_] (insert-step-before! 0))} "+"]]]
+     (for [{:keys [label code]} (:steps @state)
+           :let [result (get results (symbol label) ::NO-RESULT)]]
+       ^{:key label}
+       [:<>
+        [:tr.step
+         [:td label]
+         [:td
+          [:textarea {:value code
+                      :on-change (fn [e]
+                                   (edit-step-code! label (.. e -target -value)))}]]
+         [:td
+          [:span "=>"]]
+         [:td
+          [:span {}
+            (cond
+             (= (type result) ExceptionInfo)
+             (.-message result)
+             (= result ::NO-RESULT)
+             ""
+             :else
+             (pr-str result))]]
+         [:td
+          [:button {:on-click (fn [_] #_(remove-step! index))} "x"]]]
+        [:tr
+         [:td
+          [:button {:on-click (fn [_] #_(insert-step-before! (inc index)))} "+"]]]])]]))
 
 
 ;; temporarily disabling step
