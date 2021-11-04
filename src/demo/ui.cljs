@@ -87,6 +87,9 @@
                         {:label "$D"
                          :code "(count $A)"}])
 
+(defn re-order! []
+  (swap! state update :steps analyze-and-reorder))
+
 (defn calculate-results! [steps]
   (try
    (loop [context {}
@@ -126,38 +129,40 @@
 #_(calculate-results!)
 
 (defn app-view []
-  (let [results (calculate-results! (@state :steps))]
-   [:table
-    [:tbody
-     [:tr
-      [:td
-       [:button {:on-click (fn [_] (insert-step-before! 0))} "+"]]]
-     (for [{:keys [label code]} (:steps @state)
-           :let [result (get results (symbol label) ::NO-RESULT)]]
-       ^{:key label}
-       [:<>
-        [:tr.step
-         [:td label]
-         [:td
-          [:textarea {:value code
-                      :on-change (fn [e]
-                                   (edit-step-code! label (.. e -target -value)))}]]
-         [:td
-          [:span "=>"]]
-         [:td
-          [:span {}
-            (cond
-             (= (type result) ExceptionInfo)
-             (.-message result)
-             (= result ::NO-RESULT)
-             ""
-             :else
-             (pr-str result))]]
-         [:td
-          [:button {:on-click (fn [_] #_(remove-step! index))} "x"]]]
-        [:tr
-         [:td
-          [:button {:on-click (fn [_] #_(insert-step-before! (inc index)))} "+"]]]])]]))
+  [:div
+   [:button {:on-click (fn [] (re-order!))} "Re-order"]
+   (let [results (calculate-results! (@state :steps))]
+    [:table
+     [:tbody
+      [:tr
+       [:td
+        [:button {:on-click (fn [_] (insert-step-before! 0))} "+"]]]
+      (for [{:keys [label code]} (:steps @state)
+            :let [result (get results (symbol label) ::NO-RESULT)]]
+        ^{:key label}
+        [:<>
+         [:tr.step
+          [:td label]
+          [:td
+           [:textarea {:value code
+                       :on-change (fn [e]
+                                    (edit-step-code! label (.. e -target -value)))}]]
+          [:td
+           [:span "=>"]]
+          [:td
+           [:span {}
+             (cond
+              (= (type result) ExceptionInfo)
+              (.-message result)
+              (= result ::NO-RESULT)
+              ""
+              :else
+              (pr-str result))]]
+          [:td
+           [:button {:on-click (fn [_] #_(remove-step! index))} "x"]]]
+         [:tr
+          [:td
+           [:button {:on-click (fn [_] #_(insert-step-before! (inc index)))} "+"]]]])]])])
 
 
 ;; temporarily disabling step
