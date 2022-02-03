@@ -1,6 +1,7 @@
 (ns demo.ui
  (:require
     [reagent.core :as r]
+    [clojure.string :as string]
     [sci.core :as sci]
     [demo.toposort :as toposort]))
 
@@ -30,10 +31,42 @@
              {:label "$E"
               :code "(/ $C $D)"}]}))
 
+(defn normalize-label
+  "Returns normalize label or nil if can't normalize"
+  [s]
+  (let [s (-> s
+              (string/upper-case)
+              (string/replace #"[^A-Z]" ""))]
+   (when-not (string/blank? s)
+    (str "$" s))))
+
+#_(normalize-label "e % 2")
+
+(defn label-exists? [steps label]
+  (some (fn [step] (= (step :label) label)) steps))
+
+(defn rename-step! [old-label new-label]
+  (when-let [new-label (normalize-label new-label)]
+   (swap! state update :steps
+     (fn [steps]
+       (if (label-exists? steps new-label)
+        steps
+        (map (fn [step]
+              (-> step
+                  (update :code (fn [code] (string/replace code #"\$[A-Z]+"
+                                                           (fn [label]
+                                                             (if (= label old-label)
+                                                              new-label
+                                                              label)))))
+                  (update :label (fn [label] (if (= label old-label)
+                                              new-label
+                                              label)))))
+             steps))))))
+
 (defn generate-new-label [steps]
   (let [letters (mapv char (range (.charCodeAt "A") (.charCodeAt "Z")))
         new-label (apply str "$" (repeatedly 3 #(rand-nth letters)))]
-    (if (some (fn [step] (= (step :label) new-label)) steps)
+    (if (label-exists? steps new-label)
      (recur steps)
      new-label)))
 
@@ -157,7 +190,7 @@
           [:td
            [:button {:on-click (fn [_] (insert-step-before! label))} "+"]]]
          [:tr.step
-          [:td label]
+          [:td [:button {:on-click (fn [] (rename-step! label (js/prompt "What to rename?")))} label]]
           [:td
            [:textarea {:value code
                        :on-change (fn [e]
@@ -179,9 +212,6 @@
        [:td
         [:button {:on-click (fn [_] (insert-step-before! nil))} "+"]]]]])])
 
-
-;; inserting
-;; renaming label
 ;; change :label and :code to :step/label and :step/code
 ;; maybe explore using specter
 ;; code autoformatting
