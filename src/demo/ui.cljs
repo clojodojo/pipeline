@@ -33,8 +33,8 @@
 (defn insert-step-before! [i]
   (swap! state update :steps insert-in-vector i {:code "(fn [i] i)"}))
 
-(defn remove-step! [i]
-  (swap! state update :steps remove-from-vector i))
+(defn remove-step! [label]
+  (swap! state update :steps (fn [steps] (remove (fn [step] (= (step :label) label)) steps))))
 
 (defn edit-step-code! [label code]
   (swap! state update :steps (fn [steps]
@@ -46,7 +46,9 @@
                                     steps))))
 
 
-(defn analyze [steps]
+(defn analyze
+  "For each step, identifies which steps it depends on"
+  [steps]
   (->> steps
        (map (fn [step]
               [(:label step) (set (re-seq #"\$[A-Z]+" (:code step)))]))
@@ -159,7 +161,7 @@
               :else
               (pr-str result))]]
           [:td
-           [:button {:on-click (fn [_] #_(remove-step! index))} "x"]]]
+           [:button {:on-click (fn [_] (remove-step! label))} "x"]]]
          [:tr
           [:td
            [:button {:on-click (fn [_] #_(insert-step-before! (inc index)))} "+"]]]])]])])
