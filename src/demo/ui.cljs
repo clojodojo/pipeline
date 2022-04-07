@@ -3,6 +3,8 @@
     [reagent.core :as r]
     [clojure.string :as string]
     [sci.core :as sci]
+    [react-flow-renderer :default ReactFlow :refer [Handle]]
+    [react-flow-renderer :as flow]
     [demo.toposort :as toposort]))
 
 (defn remove-from-vector [vector i]
@@ -176,8 +178,59 @@
 #_(sci/eval-string "(+ A 3)" {:namespaces {'user {'A 7}}})
 #_(calculate-results!)
 
+(defn node-view [props]
+  #_(println props (js->clj (:data props)))
+  [:<> {}
+   [:> Handle {:type "target" :position "top"}]
+   [:div {:style {:border "1px solid black"
+                  :background "white"}}
+     [:div (:id props)]
+     [:input {:value (get (js->clj (:data props)) "label")
+              :on-change (fn [e]
+                           (edit-step-code! (:id props) (.. e -target -value)))}]]
+   [:> Handle {:type "source" :position "bottom" :id "a"}]
+   [:> Handle {:type "source" :position "bottom" :id "b"}]])
+
+(defn state->react-flow [state]
+  (concat
+    ;; nodes
+    (map (fn [step]
+           {:id (:label step)
+            :type "node"
+            :data {:label (:code step)}
+            :position {:x 0 :y 0}})
+         (:steps state))
+    ;; wires
+    (->> (analyze (:steps state))
+         (mapcat (fn [[target-id source-ids]]
+                  (map (fn [source-id]
+                         {:id (str source-id "-" target-id)
+                          :source source-id
+                          ;; :sourceHandle
+                          :target target-id})
+                       source-ids))))))
+
+#_(state->react-flow {:steps [{:label "$A"
+                               :code "[10 15 26]"}
+                              {:label "$B"
+                               :code "(map inc $A)"}
+                              {:label "$C"
+                               :code "(reduce + $B)"}
+                              {:label "$D"
+                               :code "(count $A)"}
+                              {:label "$E"
+                               :code "(/ $C $D)"}]})
+
+
+(defn graph-view []
+  [:div {:style {:height 400 :border "solid 1px #DDDDDD"}}
+   [:> ReactFlow {:elements (state->react-flow @state)
+                  :nodeTypes #js {:node (r/reactify-component node-view)}}
+    [:> flow/Background]]])
+
 (defn app-view []
   [:div
+   [graph-view]
    [:button {:on-click (fn [] (re-order!))} "Re-order"]
    (let [results (calculate-results! (@state :steps))]
     [:table

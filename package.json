@@ -4,7 +4,8 @@
   "description": "A minimal ClojureScript + Reagent project",
   "dependencies": {
     "react": "17.0.1",
-    "react-dom": "17.0.1"
+    "react-dom": "17.0.1",
+    "react-flow-renderer": "^9.7.3"
   },
   "devDependencies": {
     "shadow-cljs": "2.14.2"
