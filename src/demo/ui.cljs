@@ -140,7 +140,9 @@
 (defn re-order! []
   (swap! state update :steps analyze-and-reorder))
 
-(defn calculate-results! [steps]
+(defn calculate-results!
+  "Gotcha: returned keys are symbols not strings or keywords"
+  [steps]
   (try
    (loop [context {}
           remaining-steps (analyze-and-reorder steps)]
@@ -187,17 +189,27 @@
      [:div (:id props)]
      [:input {:value (get (js->clj (:data props)) "label")
               :on-change (fn [e]
-                           (edit-step-code! (:id props) (.. e -target -value)))}]]
+                           (edit-step-code! (:id props) (.. e -target -value)))}]
+     [:div
+      (let [result (get (js->clj (:data props)) "result")]
+       (cond
+        (= (type result) ExceptionInfo)
+        (.-message result)
+        (= result ::NO-RESULT)
+        ""
+        :else
+        (pr-str result)))]]
    [:> Handle {:type "source" :position "bottom" :id "a"}]
    [:> Handle {:type "source" :position "bottom" :id "b"}]])
 
-(defn state->react-flow [state]
+(defn state->react-flow [state results]
   (concat
     ;; nodes
     (map (fn [step]
            {:id (:label step)
             :type "node"
-            :data {:label (:code step)}
+            :data {:label (:code step)
+                   :result (get results (symbol (:label step)) ::NO-RESULT)}
             :position {:x 0 :y 0}})
          (:steps state))
     ;; wires
@@ -221,18 +233,17 @@
                               {:label "$E"
                                :code "(/ $C $D)"}]})
 
-
-(defn graph-view []
+(defn graph-view [results]
   [:div {:style {:height 400 :border "solid 1px #DDDDDD"}}
-   [:> ReactFlow {:elements (state->react-flow @state)
+   [:> ReactFlow {:elements (state->react-flow @state results)
                   :nodeTypes #js {:node (r/reactify-component node-view)}}
     [:> flow/Background]]])
 
 (defn app-view []
-  [:div
-   [graph-view]
-   [:button {:on-click (fn [] (re-order!))} "Re-order"]
-   (let [results (calculate-results! (@state :steps))]
+  (let [results (calculate-results! (@state :steps))]
+   [:div
+    [graph-view results]
+    [:button {:on-click (fn [] (re-order!))} "Re-order"]
     [:table
      [:tbody
       (for [{:keys [label code]} (:steps @state)
@@ -263,7 +274,7 @@
            [:button {:on-click (fn [_] (remove-step! label))} "x"]]]])
       [:tr
        [:td
-        [:button {:on-click (fn [_] (insert-step-before! nil))} "+"]]]]])])
+        [:button {:on-click (fn [_] (insert-step-before! nil))} "+"]]]]]]))
 
 ;; change :label and :code to :step/label and :step/code
 ;; maybe explore using specter
