@@ -176,7 +176,6 @@
                 :code "(/ C D)"}]]
     (calculate-results! steps))
 
-
 #_(sci/eval-string "(+ A 3)" {:namespaces {'user {'A 7}}})
 #_(calculate-results!)
 
@@ -203,24 +202,28 @@
    [:> Handle {:type "source" :position "bottom" :id "b"}]])
 
 (defn state->react-flow [state results]
-  (concat
-    ;; nodes
-    (map (fn [step]
-           {:id (:label step)
-            :type "node"
-            :data {:label (:code step)
-                   :result (get results (symbol (:label step)) ::NO-RESULT)}
-            :position {:x 0 :y 0}})
-         (:steps state))
-    ;; wires
-    (->> (analyze (:steps state))
-         (mapcat (fn [[target-id source-ids]]
-                  (map (fn [source-id]
-                         {:id (str source-id "-" target-id)
-                          :source source-id
-                          ;; :sourceHandle
-                          :target target-id})
-                       source-ids))))))
+  (let [elk-layout (->> (get (js->clj (:elk state)) "children")
+                        (map (fn [{:strs [id x y]}]
+                              [id {:x x :y y}]))
+                        (into {}))]
+   (concat
+     ;; nodes
+     (map (fn [step]
+            {:id (:label step)
+             :type "node"
+             :data {:label (:code step)
+                    :result (get results (symbol (:label step)) ::NO-RESULT)}
+             :position (get elk-layout (:label step))})
+          (:steps state))
+     ;; wires
+     (->> (analyze (:steps state))
+          (mapcat (fn [[target-id source-ids]]
+                   (map (fn [source-id]
+                          {:id (str source-id "-" target-id)
+                           :source source-id
+                           ;; :sourceHandle
+                           :target target-id})
+                        source-ids)))))))
 
 #_(state->react-flow {:steps [{:label "$A"
                                :code "[10 15 26]"}
@@ -233,6 +236,29 @@
                               {:label "$E"
                                :code "(/ $C $D)"}]})
 
+(defn state->elk [state results]
+  {:id "root"
+   :layoutOptions {:elk.algorithm "mrtree"}
+   :children (map (fn [step]
+                    {:id (:label step)
+                     :width 200
+                     :height 60})
+                  (:steps state))
+   :edges (->> (analyze (:steps state))
+               (mapcat (fn [[target-id source-ids]]
+                        (map (fn [source-id]
+                               {:id (str source-id "-" target-id)
+                                :sources [source-id]
+                                :targets [target-id]})
+                             source-ids))))})
+
+(defn layout! []
+  (let [elk (js/ELK.)]
+   (-> ^js/Object elk
+        (.layout (clj->js (state->elk @state (calculate-results! (@state :steps)))))
+        (.then (fn [layout] (swap! state assoc :elk layout)))
+        (.catch js/console.error))))
+
 (defn graph-view [results]
   [:div {:style {:height 400 :border "solid 1px #DDDDDD"}}
    [:> ReactFlow {:elements (state->react-flow @state results)
@@ -242,8 +268,10 @@
 (defn app-view []
   (let [results (calculate-results! (@state :steps))]
    [:div
-    [graph-view results]
+    (when (:elk @state)
+     [graph-view results])
     [:button {:on-click (fn [] (re-order!))} "Re-order"]
+    [:button {:on-click (fn [] (layout!))} "Layout"]
     [:table
      [:tbody
       (for [{:keys [label code]} (:steps @state)
