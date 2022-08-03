@@ -220,11 +220,31 @@
    [:> Handle {:type "target" :position "top"}]
    [:div {:style {:border "1px solid black"
                   :background "white"}}
-     [:div (:id props)]
+     [:input {:default-value (:id props)
+              :style {:display "block"
+                      :font-family "monospace"
+                      :font-size "0.75rem"
+                      :padding "0.5em"
+                      :border "none"}
+              :on-change (fn [e]
+                           (rename-step! (:id props)
+                             (.. e -target -value)))}]
      [:input {:value (get (js->clj (:data props)) "label")
+              :class "nodrag"
+              :style {:background "black"
+                      :display "block"
+                      :color "white"
+                      :font-family "monospace"
+                      :font-size "0.75rem"
+                      :border "none"
+                      :padding "0.5em"}
               :on-change (fn [e]
                            (edit-step-code! (:id props) (.. e -target -value)))}]
-     [:div
+     [:div.output
+      {:class "nodrag"
+       :style {:padding "0.5em"
+               :font-family "monospace"
+               :font-size "0.75rem"}}
       (let [result (get (js->clj (:data props)) "result")]
        (cond
         (= (type result) ExceptionInfo)
