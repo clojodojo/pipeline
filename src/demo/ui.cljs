@@ -21,17 +21,26 @@
 
 #_(insert-in-vector [:a :b :c] 0 :new)
 
+(defn generate-id []
+  ;; elk can't handle object uuids
+  (str (random-uuid)))
+
 (defonce state
   (r/atom
-    {:steps [{:label "$A"
+    {:steps [{:id (generate-id)
+              :label "$A"
               :code "[10 15 26]"}
-             {:label "$B"
+             {:id (generate-id)
+              :label "$B"
               :code "(map inc $A)"}
-             {:label "$C"
+             {:id (generate-id)
+              :label "$C"
               :code "(reduce + $B)"}
-             {:label "$D"
+             {:id (generate-id)
+              :label "$D"
               :code "(count $A)"}
-             {:label "$E"
+             {:id (generate-id)
+              :label "$E"
               :code "(/ $C $D)"}]}))
 
 (defn normalize-label
@@ -51,43 +60,57 @@
 (defn analyze
   "For each step, identifies which steps it depends on"
   [steps]
-  (let [labels (set (map :label steps))]
+  (let [labels (set (map :label steps))
+        label->id (zipmap (map :label steps)
+                          (map :id steps))]
    (->> steps
         (map (fn [step]
-               [(:label step)
-                ;; remove edges that don't exist
-                ;; b/c ELK explodes downstream if there
-                ;; are references to non-existing nodes
-                (set/intersection labels
-                                  (set (re-seq #"\$[A-Z]+" (:code step))))]))
+               [(:id step)
+                (->> (set (re-seq #"\$[A-Z]+" (:code step)))
+                     ;; remove edges that don't exist
+                     ;; b/c ELK explodes downstream if there
+                     ;; are references to non-existing nodes
+                     (set/intersection labels)
+                     (map label->id)
+                     set)]))
         (into {}))))
 
-#_(toposort/toposort (analyze [{:label "$A"
+#_(toposort/toposort (analyze [{:id (generate-id)
+                                :label "$A"
                                 :code "[10 15 26]"}
-                               {:label "$B"
+                               {:id (generate-id)
+                                :label "$B"
                                 :code "(map inc $A)"}
-                               {:label "$C"
+                               {:id (generate-id)
+                                :label "$C"
                                 :code "(reduce + $B)"}
-                               {:label "$E"
+                               {:id (generate-id)
+                                :label "$E"
                                 :code "(/ $C $D)"}
-                               {:label "$D"
+                               {:id (generate-id)
+                                :label "$D"
                                 :code "(count $A)"}]))
 
 (defn analyze-and-reorder [steps]
-  (let [labels-in-order (toposort/toposort (analyze steps))
-        label->step (zipmap (map :label steps)
-                            steps)]
-    (map (fn [l] (label->step l)) labels-in-order)))
+  (let [step-ids-in-order (toposort/toposort (analyze steps))
+        id->step (zipmap (map :id steps)
+                         steps)]
+    (map id->step step-ids-in-order)))
 
-#_(analyze-and-reorder [{:label "$A"
+#_(analyze-and-reorder [{:id (generate-id)
+                         :label "$A"
                          :code "[10 15 26]"}
-                        {:label "$B"
+                        {:id (generate-id)
+                         :label "$B"
                          :code "(map inc $A)"}
-                        {:label "$C"
+                        {:id (generate-id)
+                         :label "$C"
                          :code "(reduce + $B)"}
-                        {:label "$E"
+                        {:id (generate-id)
+                         :label "$E"
                          :code "(/ $C $D)"}
-                        {:label "$D"
+                        {:id (generate-id)
+                         :label "$D"
                          :code "(count $A)"}])
 
 (defn calculate-results
@@ -110,19 +133,30 @@
               (rest remaining-steps))
 
        :done
-       context)))
+       (let [label->id (zipmap (map :label steps)
+                               (map :id steps))]
+        (->> context
+             ;; keys are the step labels (as symbols)
+             (map (fn [[k result]]
+                    [(label->id (name k)) result]))
+             (into {}))))))
    (catch js/Error e
      {})))
 
-#_(let [steps [{:label "A"
+#_(let [steps [{:id (generate-id)
+                :label "A"
                 :code "[10 15 26]"}
-               {:label "B"
+               {:id (generate-id)
+                :label "B"
                 :code "(map inc A)"}
-               {:label "C"
+               {:id (generate-id)
+                :label "C"
                 :code "(reduce + B)"}
-               {:label "D"
+               {:id (generate-id)
+                :label "D"
                 :code "(count A)"}
-               {:label "E"
+               {:id (generate-id)
+                :label "E"
                 :code "(/ C D)"}]]
     (calculate-results steps))
 
@@ -132,9 +166,9 @@
   {:id "root"
    :layoutOptions {:elk.algorithm "mrtree"}
    :children (map (fn [step]
-                    {:id (:label step)
+                    {:id (:id step)
                      :width 200
-                     :height 60})
+                     :height 85})
                   steps)
    :edges (->> (analyze steps)
                (mapcat (fn [[target-id source-ids]]
@@ -184,26 +218,27 @@
      (recur steps)
      new-label)))
 
-(defn insert-step-before! [label]
+(defn insert-step-before! [id]
   (->> (:steps @state)
        ((fn [steps]
-          (let [[before after] (split-with (fn [step] (not= (step :label) label)) steps)]
+          (let [[before after] (split-with (fn [step] (not= (step :id) id)) steps)]
            (concat before
-                   [{:label (generate-new-label steps)
+                   [{:id (generate-id)
+                     :label (generate-new-label steps)
                      :code "nil"}]
                    after))))
        (layout!)))
 
-(defn remove-step! [label]
+(defn remove-step! [id]
   (->> (:steps @state)
-       (remove (fn [step] (= (step :label) label)))
+       (remove (fn [step] (= (step :id) id)))
        (layout!)))
 
-(defn edit-step-code! [label code]
+(defn edit-step-code! [id code]
   (->> (:steps @state)
        (map (fn [step]
-              (if (= (:label step)
-                     label)
+              (if (= (:id step)
+                     id)
                (assoc step :code code)
                step)))
        (layout!)))
@@ -215,46 +250,45 @@
    "$E" #{"$C" "$D"}}
 
 (defn node-view [props]
-  #_(println props (js->clj (:data props)))
-  [:<> {}
-   [:> Handle {:type "target" :position "top"}]
-   [:div {:style {:border "1px solid black"
-                  :background "white"}}
-     [:input {:default-value (:id props)
-              :style {:display "block"
-                      :font-family "monospace"
-                      :font-size "0.75rem"
-                      :padding "0.5em"
-                      :border "none"}
-              :on-change (fn [e]
-                           (rename-step! (:id props)
-                             (.. e -target -value)))}]
-     [:input {:value (get (js->clj (:data props)) "label")
-              :class "nodrag"
-              :style {:background "black"
-                      :display "block"
-                      :color "white"
-                      :font-family "monospace"
-                      :font-size "0.75rem"
-                      :border "none"
-                      :padding "0.5em"}
-              :on-change (fn [e]
-                           (edit-step-code! (:id props) (.. e -target -value)))}]
-     [:div.output
-      {:class "nodrag"
-       :style {:padding "0.5em"
-               :font-family "monospace"
-               :font-size "0.75rem"}}
-      (let [result (get (js->clj (:data props)) "result")]
+  (let [{:strs [id label result code]} (js->clj (:data props))]
+   [:<> {}
+    [:> Handle {:type "target" :position "top"}]
+    [:div {:style {:border "1px solid black"
+                   :background "white"}}
+      [:input {:value label
+               :style {:display "block"
+                       :font-family "monospace"
+                       :font-size "0.75rem"
+                       :padding "0.5em"
+                       :border "none"}
+               :on-change (fn [e]
+                            (rename-step! label
+                              (.. e -target -value)))}]
+      [:input {:value code
+               :class "nodrag"
+               :style {:background "black"
+                       :display "block"
+                       :color "white"
+                       :font-family "monospace"
+                       :font-size "0.75rem"
+                       :border "none"
+                       :padding "0.5em"}
+               :on-change (fn [e]
+                            (edit-step-code! id (.. e -target -value)))}]
+      [:div.output
+       {:class "nodrag"
+        :style {:padding "0.5em"
+                :font-family "monospace"
+                :font-size "0.75rem"}}
        (cond
         (= (type result) ExceptionInfo)
         (.-message result)
         (= result ::NO-RESULT)
         ""
         :else
-        (pr-str result)))]]
-   [:> Handle {:type "source" :position "bottom" :id "a"}]
-   [:> Handle {:type "source" :position "bottom" :id "b"}]])
+        (pr-str result))]]
+    [:> Handle {:type "source" :position "bottom" :id "a"}]
+    [:> Handle {:type "source" :position "bottom" :id "b"}]]))
 
 (defn state->react-flow
   [{:keys [steps elk results]}]
@@ -265,11 +299,13 @@
    (concat
      ;; nodes
      (map (fn [step]
-            {:id (:label step)
+            {:id (:id step)
              :type "node"
-             :data {:label (:code step)
-                    :result (get results (symbol (:label step)) ::NO-RESULT)}
-             :position (get elk-layout (:label step))})
+             :data {:id (:id step)
+                    :label (:label step)
+                    :code (:code step)
+                    :result (get results (:id step) ::NO-RESULT)}
+             :position (get elk-layout (:id step))})
           steps)
      ;; wires
      (->> (analyze steps)
@@ -281,19 +317,24 @@
                            :target target-id})
                         source-ids)))))))
 ;; OUT OF DATE
-#_(state->react-flow {:steps [{:label "$A"
+#_(state->react-flow {:steps [{:id (generate-id)
+                               :label "$A"
                                :code "[10 15 26]"}
-                              {:label "$B"
+                              {:id (generate-id)
+                               :label "$B"
                                :code "(map inc $A)"}
-                              {:label "$C"
+                              {:id (generate-id)
+                               :label "$C"
                                :code "(reduce + $B)"}
-                              {:label "$D"
-                               :code "(count $A)"}
-                              {:label "$E"
-                               :code "(/ $C $D)"}]})
+                              {:id (generate-id)
+                               :label "$E"
+                               :code "(/ $C $D)"}
+                              {:id (generate-id)
+                               :label "$D"
+                               :code "(count $A)"}]})
 
 (defn graph-view []
-  [:div {:style {:height 400 :border "solid 1px #DDDDDD"}}
+  [:div {:style {:height 500 :border "solid 1px #DDDDDD"}}
    [:> ReactFlow {:elements (state->react-flow @state)
                   :nodeTypes #js {:node (r/reactify-component node-view)}}
     [:> flow/Background]]])
@@ -302,19 +343,19 @@
  [:table
   [:tbody
    (doall
-    (for [{:keys [label code]} (:steps @state)
-          :let [result (get (:results @state) (symbol label) ::NO-RESULT)]]
-      ^{:key label}
+    (for [{:keys [id label code]} (:steps @state)
+          :let [result (get (:results @state) id ::NO-RESULT)]]
+      ^{:key id}
       [:<>
        [:tr
         [:td
-         [:button {:on-click (fn [_] (insert-step-before! label))} "+"]]]
+         [:button {:on-click (fn [_] (insert-step-before! id))} "+"]]]
        [:tr.step
         [:td [:button {:on-click (fn [] (rename-step! label (js/prompt "What to rename?")))} label]]
         [:td
          [:textarea {:value code
                      :on-change (fn [e]
-                                  (edit-step-code! label (.. e -target -value)))}]]
+                                  (edit-step-code! id (.. e -target -value)))}]]
         [:td
          [:span "=>"]]
         [:td
@@ -327,7 +368,7 @@
             :else
             (pr-str result))]]
         [:td
-         [:button {:on-click (fn [_] (remove-step! label))} "x"]]]]))
+         [:button {:on-click (fn [_] (remove-step! id))} "x"]]]]))
    [:tr
     [:td
      [:button {:on-click (fn [_] (insert-step-before! nil))} "+"]]]]])
